@@ -58,7 +58,18 @@ async function sigv4Request(
     });
   }
 
-  // Construct an HttpRequest object from the AWS SDK
+  // Determine the host header value.
+  const hostHeader = parsedUrl.port
+  ? `${parsedUrl.hostname}:${parsedUrl.port}`
+  : parsedUrl.hostname;
+
+  // Merge the passed headers (if any) with the required host header.
+  const finalHeaders = {
+    host: hostHeader,
+    ...headers,
+  };
+
+  // Construct the HttpRequest with the finalHeaders.
   const httpRequest = new HttpRequest({
     protocol: parsedUrl.protocol, // e.g. "https:"
     hostname: parsedUrl.hostname,
@@ -66,7 +77,7 @@ async function sigv4Request(
     method: method,
     path: parsedUrl.pathname,
     query: queryParams,
-    headers: headers || {},
+    headers: finalHeaders,
     body: body,
   });
 
