@@ -2,17 +2,18 @@
 import { SignatureV4 } from "@aws-sdk/signature-v4";
 import { HttpRequest } from "@aws-sdk/protocol-http";
 import { defaultProvider } from "@aws-sdk/credential-provider-node";
-import { Sha256 } from "@aws-crypto/sha256-node";
-import fetch, { Response } from "node-fetch";
+import { AwsCredentialIdentity } from "@aws-sdk/types";
+import { Sha256 } from "@aws-crypto/sha256-js";
+import fetch, { Response, RequestInit } from "node-fetch";
 
 // ***************************************
 // Global Constants and Environment Setup
 // ***************************************
 
 // Replace these with your actual agent values
-const agentId = "<YOUR AGENT ID>";        // INPUT YOUR AGENT ID HERE
-const agentAliasId = "<YOUR ALIAS ID>";    // INPUT YOUR ALIAS ID HERE
-const theRegion = "us-west-2";
+const agentId = "RWRMVZLC8A";
+const agentAliasId = "JTKGKFHPKP";
+const theRegion = "ca-central-1";
 
 // (Optionally) set the AWS_REGION environment variable
 process.env.AWS_REGION = theRegion;
@@ -42,7 +43,7 @@ async function sigv4Request(
   headers?: { [key: string]: string },
   service: string = "execute-api",
   region: string = process.env.AWS_REGION || "us-west-2",
-  credentials?: any
+  credentials?: AwsCredentialIdentity
 ): Promise<Response> {
   // Parse the URL
   const parsedUrl = new URL(url);
@@ -83,8 +84,12 @@ async function sigv4Request(
   // Rebuild the URL including query parameters
   let queryString = "";
   if (signedRequest.query && Object.keys(signedRequest.query).length > 0) {
+    // Cast to a record of string keys and string values
     queryString =
-      "?" + new URLSearchParams(signedRequest.query as any).toString();
+      "?" +
+      new URLSearchParams(
+        signedRequest.query as Record<string, string>
+      ).toString();
   }
   const finalUrl = `${signedRequest.protocol}//${signedRequest.hostname}${
     signedRequest.port ? ":" + signedRequest.port : ""
@@ -93,9 +98,10 @@ async function sigv4Request(
   // Prepare options for the HTTP request (using fetch)
   const fetchOptions: RequestInit = {
     method: signedRequest.method,
-    headers: signedRequest.headers,
-    body: signedRequest.body,
+    headers: signedRequest.headers as Record<string, string>,
+    body: signedRequest.body as string | null, // Ensure proper type casting
   };
+
 
   // Send the HTTP request and return the response
   const response = await fetch(finalUrl, fetchOptions);
@@ -137,8 +143,12 @@ async function decodeResponse(
           const decodedBuffer = Buffer.from(encodedLastResponse, "base64");
           const finalResponsePart = decodedBuffer.toString("utf-8");
           capturedOutput.push(finalResponsePart);
-        } catch (err) {
-          capturedOutput.push(`Error decoding base64 at index ${idx}: ${err}`);
+        } catch (err: unknown) {
+          capturedOutput.push(
+            `Error decoding base64 at index ${idx}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
         }
       }
     } else {
@@ -149,7 +159,7 @@ async function decodeResponse(
 
   const lastResponse = splitResponse[splitResponse.length - 1];
   capturedOutput.push(`Lst Response: ${lastResponse}`);
-  let finalResponse: string = "";
+  let finalResponse = "";
 
   if (lastResponse.includes("bytes")) {
     capturedOutput.push("Bytes in last response");
@@ -171,8 +181,12 @@ async function decodeResponse(
         try {
           const parsed = JSON.parse(part2);
           finalResponse = parsed["text"] || "";
-        } catch (err) {
-          capturedOutput.push(`Error parsing JSON: ${err}`);
+        } catch (err: unknown) {
+          capturedOutput.push(
+            `Error parsing JSON: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
         }
       }
     }
@@ -182,10 +196,9 @@ async function decodeResponse(
   finalResponse = finalResponse.replace(/"/g, "");
   finalResponse = finalResponse.replace(/{input:{value:/g, "");
   finalResponse = finalResponse.replace(/,source:null}}/g, "");
-
   const llmResponse = finalResponse;
 
-  // Return the collected log output and the final response
+  // Return both the captured output and the final response
   return [capturedOutput.join("\n"), llmResponse];
 }
 
@@ -236,23 +249,40 @@ async function askQuestion(
 // ***************************************
 
 /**
+ * The Lambda event expected by the handler.
+ */
+export interface LambdaEvent {
+  sessionId: string;
+  question: string;
+  endSession?: boolean | string;
+}
+
+/**
+ * The response object returned by the Lambda handler.
+ */
+export interface LambdaResponse {
+  statusCode: number;
+  body: string;
+}
+
+/**
  * The AWS Lambda handler function.
  *
  * @param event The Lambda event, expected to contain "sessionId", "question", and optionally "endSession".
- * @param context The Lambda context.
+ * @param _context The Lambda context (unused).
  * @returns A response object with a statusCode and a body.
  */
 export const lambdaHandler = async (
-  event: any,
-  context: any
-): Promise<any> => {
-  const sessionId = event.sessionId;
-  const question = event.question;
+  event: LambdaEvent,
+  _context?: unknown
+): Promise<LambdaResponse> => {
+  console.log('context', _context);
+  const { sessionId, question, endSession: rawEndSession } = event;
   let endSession = false;
 
   console.log(`Session: ${sessionId} asked question: ${question}`);
 
-  if (event.endSession && event.endSession === "true") {
+  if (rawEndSession === true || rawEndSession === "true") {
     endSession = true;
   }
 
@@ -273,11 +303,13 @@ export const lambdaHandler = async (
         trace_data: traceData,
       }),
     };
-  } catch (e: any) {
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
     return {
       statusCode: 500,
       body: JSON.stringify({
-        error: e.toString(),
+        error: errorMessage,
       }),
     };
   }

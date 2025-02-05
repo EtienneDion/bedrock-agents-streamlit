@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useChat } from 'ai/react';
+import { useChat } from '@ai-sdk/react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
-// Import the lambdaHandler function which replaces the fetch() call.
-// (Make sure this module is available and properly bundled for your project.)
-import { lambdaHandler } from '@/lib/lambdaHandler';
+
+interface Message {
+  id: string;
+  role: "user" | "assistant" | "system" | "data";
+  content: string;
+}
 
 /**
  * Chat component that renders a chat UI and uses the lambdaHandler function
@@ -17,6 +20,10 @@ import { lambdaHandler } from '@/lib/lambdaHandler';
 export default function Chat() {
   // State for a unique session id (generated on component mount).
   const [sessionId, setSessionId] = useState('');
+
+  useEffect(() => {
+    setSessionId(Math.random().toString(36).substring(7));
+  }, []);
   // Loading state while waiting for the lambdaHandler to return.
   const [isLoading, setIsLoading] = useState(false);
   // useChat hook provides the messages, input value, and helper functions.
@@ -24,55 +31,55 @@ export default function Chat() {
 
   // useEffect to generate a unique session ID and load any existing chat history.
   useEffect(() => {
-    // Generate a unique session ID.
-    setSessionId(Math.random().toString(36).substring(7));
-
-    // Load chat history from IndexedDB.
     const loadHistory = async () => {
       const db = await openDatabase();
       const history = await getHistory(db);
-      setMessages(history);
+      // Map the retrieved messages to include an id and cast the role to the expected union type.
+      const mappedHistory = history.map((message, index) => ({
+        id: index.toString(),
+        role: message.role as "user" | "assistant" | "system" | "data",
+        content: message.content,
+      }));
+      setMessages(mappedHistory);
     };
     loadHistory();
-  }, [setMessages]);
-
+  }, []); 
+  
   /**
    * Handler for the chat form submission.
    * Instead of using fetch(), this function calls the lambdaHandler directly.
    *
    * @param e The form submission event.
    */
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const onSubmit = async (_e: React.FormEvent<HTMLFormElement>) => {
+    _e.preventDefault();
     setIsLoading(true);
 
     // Create a new message for the user's input and add it to the chat.
-    const newMessage = { role: 'user', content: input };
+    const newMessage = { id: Date.now().toString(), role: 'user', content: input } as Message;
     setMessages((prevMessages) => [...prevMessages, newMessage]);
 
     try {
-      // Construct the event object for the lambdaHandler.
-      const event = {
-        sessionId,
-        question: input,
-        endSession: false,
-      };
-
-      // Call the lambdaHandler function directly.
-      const lambdaResponse = await lambdaHandler(event, {});
-
-      // Check for errors based on the returned status code.
-      if (lambdaResponse.statusCode !== 200) {
-        throw new Error('API request failed with status ' + lambdaResponse.statusCode);
+      const response = await fetch('/api/invoke-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          question: input,
+          endSession: false,
+        }),
+      });
+  
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
       }
-
-      // Parse the JSON response body.
-      const parsedBody = JSON.parse(lambdaResponse.body);
+  
+      const parsedBody = await response.json();
       // The lambdaHandler returns an object with "trace_data" holding the assistant’s answer.
       const assistantContent = parsedBody.trace_data;
 
       // Create the assistant message.
-      const assistantMessage = { role: 'assistant', content: assistantContent };
+      const assistantMessage = {id: Date.now().toString(), role: 'assistant', content: assistantContent } as Message;
 
       // Update the chat with the assistant's response.
       setMessages((prevMessages) => [...prevMessages, assistantMessage]);
@@ -88,10 +95,10 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex items-center justify-center min-h-screen">
       <Card className="w-full max-w-2xl">
         <CardHeader>
-          <CardTitle>AI Chat</CardTitle>
+          <CardTitle>Ask me!</CardTitle>
         </CardHeader>
         <CardContent className="h-[60vh] overflow-y-auto">
           {messages.map((m, index) => (
@@ -165,14 +172,23 @@ async function addMessageToHistory(db: IDBDatabase, message: { role: string; con
  * Retrieves all chat messages from IndexedDB.
  *
  * @param db The open IDBDatabase instance.
- * @returns A Promise that resolves with an array of stored message objects.
+ * @returns A Promise that resolves with an array of stored message objects that include an `id`.
  */
-async function getHistory(db: IDBDatabase): Promise<{ role: string; content: string }[]> {
+async function getHistory(db: IDBDatabase): Promise<{ id: string; role: string; content: string }[]> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(['messages'], 'readonly');
     const store = transaction.objectStore('messages');
     const request = store.getAll();
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      // Map over the retrieved messages to add an `id` property.
+      const messagesWithId = (request.result as { role: string; content: string }[]).map(
+        (msg, index) => ({
+          id: index.toString(), // You can generate a more robust id if needed.
+          ...msg,
+        })
+      );
+      resolve(messagesWithId);
+    };
   });
 }

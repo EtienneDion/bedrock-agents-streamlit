@@ -1,23 +1,40 @@
 {
-  "name": "my-chat-app",
-  "version": "1.0.0",
+  "name": "react-chat-app",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "next": "^13.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "ai": "^1.0.0",             // adjust version as needed
-    "lucide-react": "^0.263.0",  // adjust version as needed
-    "shadcn-ui": "^1.0.0"        // adjust as needed – or replace with the correct package names for shadcn components if published separately
+    "@ai-sdk/react": "^1.1.8",
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@aws-sdk/credential-provider-node": "^3.741.0",
+    "@aws-sdk/protocol-http": "^3.374.0",
+    "@aws-sdk/signature-v4": "^3.374.0",
+    "@radix-ui/react-slot": "^1.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.474.0",
+    "next": "15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "shadcn-ui": "^0.9.4",
+    "tailwind-merge": "^3.0.1",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "typescript": "^4.9.0",
-    "@types/node": "^18.0.0",
-    "@types/react": "^18.0.0"
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/node-fetch": "^2.6.12",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.6",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
   }
 }
