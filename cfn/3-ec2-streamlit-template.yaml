@@ -3,7 +3,7 @@ Description: CloudFormation template to launch an EC2 instance with Streamlit ap
 
 Parameters:
   SSHRegionIPsAllowed:
-    Description: Provides EC2 SSH access for CIDR range in a region. (Default is us-west-2)
+    Description: Provides EC2 SSH access for CIDR range in a region. (Default is ca-central-1)
     Type: String
     Default: 35.183.92.176/29
     AllowedValues:
@@ -125,6 +125,31 @@ Resources:
       SubnetId: !Ref Subnet
       RouteTableId: !Ref RouteTable
 
+  # Create an IAM Role for the EC2 instance to use SSM and Amazon Bedrock
+  EC2Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+
+  # Create an Instance Profile for the EC2 instance
+  InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+
   # Create a Security Group to allow HTTP traffic on port 8501 and SSH traffic
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
@@ -150,54 +175,7 @@ Resources:
       FromPort: -1
       ToPort: -1
       CidrIp: 0.0.0.0/0
-
-  # Create an IAM Role for the EC2 instance to use SSM and Amazon Bedrock
-  EC2Role:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
-        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
-
-  # Create an Instance Profile for the EC2 instance
-  InstanceProfile:
-    Type: 'AWS::IAM::InstanceProfile'
-    Properties:
-      Roles:
-        - !Ref EC2Role
-
-  InstanceSecurityGroup:
-    Type: 'AWS::EC2::SecurityGroup'
-    Properties:
-      GroupDescription: Allow HTTP traffic on port 3000 and SSH traffic
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 3000
-          ToPort: 3000
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref SSHRegionIPsAllowed
-
-  InstanceSecurityGroupEgress:
-    Type: 'AWS::EC2::SecurityGroupEgress'
-    Properties:
-      GroupId: !Ref InstanceSecurityGroup
-      IpProtocol: -1
-      FromPort: -1
-      ToPort: -1
-      CidrIp: 0.0.0.0/0
+      
 
   # Create the EC2 instance with updated UserData for Next.js
   EC2Instance:
@@ -242,7 +220,7 @@ Resources:
           npm run build
           
           npm install -g pm2
-          pm2 start npm --name "react-chat-app" -- start
+          pm2 start npm --name "react-chat-app" -- start 
 
 Outputs:
   InstanceId:
