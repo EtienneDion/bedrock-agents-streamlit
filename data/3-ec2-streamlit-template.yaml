@@ -3,7 +3,7 @@ Description: CloudFormation template to launch an EC2 instance with Streamlit ap
 
 Parameters:
   SSHRegionIPsAllowed:
-    Description: Provides EC2 SSH access for CIDR range in a region. (Default is us-west-2)
+    Description: Provides EC2 SSH access for CIDR range in a region. (Default is ca-central-1)
     Type: String
     Default: 35.183.92.176/29
     AllowedValues:
@@ -175,31 +175,7 @@ Resources:
       Roles:
         - !Ref EC2Role
 
-  InstanceSecurityGroup:
-    Type: 'AWS::EC2::SecurityGroup'
-    Properties:
-      GroupDescription: Allow HTTP traffic on port 3000 and SSH traffic
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 3000
-          ToPort: 3000
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref SSHRegionIPsAllowed
-
-  InstanceSecurityGroupEgress:
-    Type: 'AWS::EC2::SecurityGroupEgress'
-    Properties:
-      GroupId: !Ref InstanceSecurityGroup
-      IpProtocol: -1
-      FromPort: -1
-      ToPort: -1
-      CidrIp: 0.0.0.0/0
-
-  # Create the EC2 instance with updated UserData for Next.js
+  # Create the EC2 instance
   EC2Instance:
     Type: 'AWS::EC2::Instance'
     Properties:
@@ -213,36 +189,17 @@ Resources:
       Monitoring: true
       Tags:
         - Key: Name
-          Value: EC2-React-Chat-App
+          Value: EC2-Streamlit-App
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
-          # Redirect all output to both a log file and the console.
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
-          
-          # Update and upgrade packages
           apt-get update -y
           apt-get upgrade -y
-          
-          # Install Git and cURL
-          apt-get install -y git curl
-          
-          # Install Node.js (using NodeSource for Node 18.x)
-          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-          apt-get install -y nodejs
-          
-          # Clone the repository containing both the Streamlit and React/Next.js apps
+          apt-get install -y python3-pip git ec2-instance-connect
           git clone https://github.com/EtienneDion/bedrock-agents-streamlit.git /home/ubuntu/app
-          
-          # Change directory to the React/Next.js app folder
-          cd /home/ubuntu/app/react-chat-app
-          
-          # Install app dependencies and build the app
-          npm install
-          npm run build
-          
-          npm install -g pm2
-          pm2 start npm --name "react-chat-app" -- start
+          pip3 install -r /home/ubuntu/app/streamlit_app/requirements.txt
+          cd /home/ubuntu/app/streamlit_app
 
 Outputs:
   InstanceId:
